@@ -50,7 +50,7 @@ python = ["37", "38", "39", "310", "311"]
 branch = true
 parallel = true
 omit = [
-  "src/offloading/__about__.py",
+  "src/offloading/__init__.py",
 ]
 
 [tool.coverage.report]
