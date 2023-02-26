@@ -27,28 +27,34 @@ pip install offloading
 
 ```python
 from offloading.thread import run_async
-from offloading.process import offload
+from offloading.process import offload, run_async as run_async_proc
 
 
-def get_result():
+def get_result(x):
     print("this is going to be executed in another thread")
-    return True
+    return x * 2
 
 
 # non-blocking operation
-ares = run_async(get_result)  # ares == AsyncResult object
+ares = run_async(get_result, 2)  # ares == AsyncResult object
 # blocking operation
-res = ares.get(timeout=1)  # res == True
+res = ares.get(timeout=1)  # res == 4
 
 
 @offload
-def heavy_processing():
+def heavy_processing(x):
     print("this is going to be executed in separate process")
-    return 10
+    return x * 2
 
 
 # blocking operation
-res = heavy_processing()  # res == 10
+res = heavy_processing(10)  # res == 20
+
+
+# non-blocking operation
+ares = run_async_proc("dotted.path.to.heavy_processing", 5)  # ares = AsyncResult
+# blocking operation
+res = ares.get(timeout=1)  # res == 10
 ```
 
 Check out `tests` for more.

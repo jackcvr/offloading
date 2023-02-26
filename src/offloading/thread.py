@@ -19,15 +19,15 @@ class AsyncResult(BaseAsyncResult):
     def thread(self):
         return self._thread
 
+    @property
+    def is_ready(self) -> bool:
+        return self._is_exception is not None
+
     def set_result(self, value: t.Any, is_exception: bool = False) -> None:
         if threading.current_thread().ident != self._thread.ident:
             raise RuntimeError("set_result should not be called directly")
         self._value = value
         self._is_exception = is_exception
-
-    @property
-    def is_ready(self) -> bool:
-        return self._is_exception is not None
 
     def wait(self, timeout: float = None) -> bool:
         self._thread.join(timeout=timeout)
@@ -46,7 +46,7 @@ class AsyncResult(BaseAsyncResult):
 class AsyncTask(BaseAsyncTask):
     __slots__ = ("_thread", "_result")
 
-    def __init__(self, func: t.Callable, *args, **kwargs) -> None:
+    def __init__(self, func: t.Callable, *args: t.Any, **kwargs: t.Any) -> None:
         self._thread = threading.Thread(target=self.__run, args=(func, *args), kwargs=kwargs)
         self._result = AsyncResult(self._thread)
 
@@ -58,7 +58,7 @@ class AsyncTask(BaseAsyncTask):
     def result(self) -> AsyncResult:
         return self._result
 
-    def __run(self, func: t.Callable, *args, **kwargs) -> None:
+    def __run(self, func: t.Callable, *args: t.Any, **kwargs: t.Any) -> None:
         try:
             self._result.set_result(func(*args, **kwargs))
         except BaseException as e:
@@ -68,7 +68,7 @@ class AsyncTask(BaseAsyncTask):
         self._thread.start()
 
 
-def run_async(func: t.Callable, *args, **kwargs) -> AsyncResult:
+def run_async(func: t.Callable, *args: t.Any, **kwargs: t.Any) -> AsyncResult:
     task = AsyncTask(func, *args, **kwargs)
     task.start()
     return task.result

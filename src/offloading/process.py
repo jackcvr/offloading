@@ -1,15 +1,20 @@
+from __future__ import annotations
+
 import multiprocessing as mp
 import typing as t
 from functools import wraps
+from importlib import import_module
 from multiprocessing.connection import Connection
 from traceback import format_exception
-from importlib import import_module
 
 from .abc import BaseAsyncResult, BaseAsyncTask
 
+if t.TYPE_CHECKING:
+    import types
+
 
 class RemoteTraceback(Exception):
-    def __init__(self, tb) -> None:
+    def __init__(self, tb: str) -> None:
         self.tb = tb
 
     def __str__(self) -> str:
@@ -17,19 +22,19 @@ class RemoteTraceback(Exception):
 
 
 class ExceptionWithTraceback:
-    def __init__(self, exc: BaseException, tb: t.Any) -> None:
-        tb = "".join(format_exception(type(exc), exc, tb))
+    def __init__(self, exc: BaseException, tb: types.TracebackType) -> None:
         self.exc = exc
         # Traceback object needs to be garbage-collected as its frames
         # contain references to all the objects in the exception scope
         self.exc.__traceback__ = None
-        self.tb = f'\n"""\n{tb}"""'
+        tb_str = "".join(format_exception(type(exc), exc, tb))
+        self.tb = f'\n"""\n{tb_str}"""'
 
-    def __reduce__(self) -> t.Tuple[t.Callable, t.Tuple[BaseException, t.Any]]:
+    def __reduce__(self) -> t.Tuple[t.Callable, t.Tuple[BaseException, str]]:
         return _rebuild_exc, (self.exc, self.tb)
 
 
-def _rebuild_exc(exc: BaseException, tb: t.Any) -> BaseException:
+def _rebuild_exc(exc: BaseException, tb: str) -> BaseException:
     exc.__cause__ = RemoteTraceback(tb)
     return exc
 
@@ -79,8 +84,8 @@ class AsyncResult(BaseAsyncResult):
 class AsyncTask(BaseAsyncTask):
     __slots__ = ("_process", "_result")
 
-    def __init__(self, func: t.Union[str, t.Callable], *args, **kwargs) -> None:
-        self._process = mp.Process(target=self.__run, args=(func, *args), kwargs=kwargs)
+    def __init__(self, target: str | t.Callable, *args: t.Any, **kwargs: t.Any) -> None:
+        self._process = mp.Process(target=self.__run, args=(target, *args), kwargs=kwargs)
         self._result = AsyncResult(self._process, Pipe(*mp.Pipe(duplex=False)))
 
     @property
@@ -91,17 +96,17 @@ class AsyncTask(BaseAsyncTask):
     def result(self) -> AsyncResult:
         return self._result
 
-    def __run(self, func: t.Union[str, t.Callable], *args, **kwargs) -> None:
+    def __run(self, target: str | t.Callable, *args: t.Any, **kwargs: t.Any) -> None:
         try:
-            if isinstance(func, str):
-                module_name, func_name = func.rsplit(".", 1)
+            if isinstance(target, str):
+                module_name, func_name = target.rsplit(".", 1)
                 module = import_module(module_name)
                 func = getattr(module, func_name)
                 if hasattr(func, "__wrapped__"):
                     func = t.cast(t.Callable, func.__wrapped__)
                 value = func(*args, **kwargs)
             else:
-                value = func(*args, **kwargs)
+                value = target(*args, **kwargs)
         except BaseException as e:
             value = ExceptionWithTraceback(e, e.__traceback__)
             self._result.set_result(value, is_exception=True)
@@ -112,20 +117,20 @@ class AsyncTask(BaseAsyncTask):
         self._process.start()
 
 
-def run_async(path, *args, **kwargs) -> AsyncResult:
-    task = AsyncTask(path, *args, **kwargs)
+def run_async(target: str | t.Callable, *args: t.Any, **kwargs: t.Any) -> AsyncResult:
+    task = AsyncTask(target, *args, **kwargs)
     task.start()
     return task.result
 
 
-def run(path, *args, **kwargs) -> t.Any:
-    return run_async(path, *args, **kwargs).get()
+def run(target: str | t.Callable, *args: t.Any, **kwargs: t.Any) -> t.Any:
+    return run_async(target, *args, **kwargs).get()
 
 
-def offload(func):
+def offload(func: t.Callable) -> t.Callable:
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: t.Any, **kwargs: t.Any):
         return run(f"{func.__module__}.{func.__name__}", *args, **kwargs)
 
-    wrapper.__wrapped__ = func
+    wrapper.__wrapped__ = func  # type: ignore [attr-defined]
     return wrapper
