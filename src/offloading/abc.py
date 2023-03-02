@@ -3,6 +3,8 @@ import typing as t
 
 
 class BaseAsyncResult(abc.ABC):
+    __slots__ = ()
+
     @abc.abstractmethod
     def set_result(self, value: t.Any, is_exception: bool = False) -> None:
         ...
@@ -22,6 +24,8 @@ class BaseAsyncResult(abc.ABC):
 
 
 class BaseAsyncTask(abc.ABC):
+    __slots__ = ()
+
     @property
     @abc.abstractmethod
     def result(self) -> BaseAsyncResult:
